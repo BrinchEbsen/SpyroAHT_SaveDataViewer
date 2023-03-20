@@ -1,3 +1,9 @@
+---Controls---
+KEY_PRINT_MAPS = "K"
+KEY_PRINT_OBJECTIVES = "L"
+KEY_PRINT_TASKS = "O"
+--------------
+
 console.clear();
 memory.usememorydomain("RAM")
 
@@ -27,7 +33,7 @@ local tasksCleared = 0
 local taskStates = {
 	[0] = "Empty",
 	[1] = "Unchecked",
-	[2] = "Invisible, Checked",
+	[2] = "Invisible",
 	[3] = "Checked"
 }
 
@@ -132,7 +138,7 @@ local function initMapStates()
 		
 		mapStates[i] = {}
 		
-		mapStates[i]["startpoint"] = block[1];
+		mapStates[i].startpoint = block[1];
 		
 		if block[3] ~= 0xFFFFFFFF and block[4] ~= 0xFFFFFFFF and block[5] ~= 0xFFFFFFFF then
 			mapStates[i].totalDG = block[3];
@@ -157,9 +163,9 @@ local function initMapStates()
 		mapStates[i].tallyDE[7] = block[21];
 		mapStates[i].tallyDE[8] = block[22];
 		
-		mapStates[i]["tallyDE"]["all"] = 0;
+		mapStates[i].tallyDE.all = 0;
 		for j = 1, 8 do
-			mapStates[i]["tallyDE"]["all"] = mapStates[i]["tallyDE"]["all"] + mapStates[i]["tallyDE"][j]
+			mapStates[i].tallyDE.all = mapStates[i].tallyDE.all + mapStates[i].tallyDE[j]
 		end
 	end
 end
@@ -189,19 +195,19 @@ local function printMapsToConsole()
 	
 	str = str .. string.format("Number of Maps: %d\n\n", numberOfMaps);
 	for i = 0, numberOfMaps do
-		str = str .. string.format("Map ID %d:\n", mapList[i]["levelID"]);
-		str = str .. string.format("  Hash %x (%s)\n", mapList[i]["geoHash"], mapList[i]["filename"]);
-		str = str .. string.format("  Base Address: 0x%x\n", mapList[i]["addr"]);
-		str = str .. string.format("  Realm: %d\n", mapList[i]["realm_nr"]);
-		str = str .. string.format("  Level: %d\n", mapList[i]["level_nr"]);
+		str = str .. string.format("Map ID %d:\n", mapList[i].levelID);
+		str = str .. string.format("  Hash %x (%s)\n", mapList[i].geoHash, mapList[i].filename);
+		str = str .. string.format("  Base Address: 0x%x\n", mapList[i].addr);
+		str = str .. string.format("  Realm: %d\n", mapList[i].realm_nr);
+		str = str .. string.format("  Level: %d\n", mapList[i].level_nr);
 		
-		if mapStates[i]["startpoint"] ~= 0xFFFFFFFF then
-			str = str .. string.format("  Startpoint Hash: %x\n", mapStates[mapList[i]["levelID"]]["startpoint"]);
+		if mapStates[i].startpoint ~= 0xFFFFFFFF then
+			str = str .. string.format("  Startpoint Hash: %x\n", mapStates[mapList[i].levelID].startpoint);
 		end
 		
-		str = str .. string.format("  Dark Gems  :  %d/%d\n", mapStates[mapList[i]["levelID"]]["tallyDG"],mapStates[mapList[i]["levelID"]]["totalDG"] );
-		str = str .. string.format("  Dragon Eggs:  %d/%d\n", mapStates[mapList[i]["levelID"]]["tallyDE"]["all"],mapStates[mapList[i]["levelID"]]["totalDE"] );
-		str = str .. string.format("  Light Gems :  %d/%d\n", mapStates[mapList[i]["levelID"]]["tallyLG"],mapStates[mapList[i]["levelID"]]["totalLG"] );
+		str = str .. string.format("  Dark Gems  :  %d/%d\n", mapStates[mapList[i].levelID].tallyDG,mapStates[mapList[i].levelID].totalDG);
+		str = str .. string.format("  Dragon Eggs:  %d/%d\n", mapStates[mapList[i].levelID].tallyDE.all,mapStates[mapList[i].levelID].totalDE);
+		str = str .. string.format("  Light Gems :  %d/%d\n", mapStates[mapList[i].levelID].tallyLG,mapStates[mapList[i].levelID].totalLG);
 	end
 	
 	console.log(str);
@@ -397,17 +403,17 @@ end
 local function cycleFairyStartPoints(i, currentStartPoint, startPointInit)
 	if currInput["Up"] and lastInput["Up"] ~= true then
 		if startPointInit == false then
-			memory.write_u32_be(gGameState_MapStates + (mapList[i]["levelID"] * 0x64), 0x4A000000);
+			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), 0x4A000000);
 		end
 		
-		memory.write_u32_be(gGameState_MapStates + (mapList[i]["levelID"] * 0x64), currentStartPoint + 0x1);
+		memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), currentStartPoint + 0x1);
 	elseif currInput["Down"] and lastInput["Down"] ~= true then
 		if startPointInit == false then
-			memory.write_u32_be(gGameState_MapStates + (mapList[i]["levelID"] * 0x64), 0x4A000000);
+			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), 0x4A000000);
 		end
 		
 		if currentStartPoint > 0x4A000000 then
-			memory.write_u32_be(gGameState_MapStates + (mapList[i]["levelID"] * 0x64), currentStartPoint - 0x1);
+			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), currentStartPoint - 0x1);
 		end
 	end
 end
@@ -415,17 +421,17 @@ end
 local function cycleShopStartPoints(i, currentStartPoint, startPointInit)
 	if currInput["Up"] and lastInput["Up"] ~= true then
 		if startPointInit == false then
-			memory.write_u32_be(gGameState_MapStates + (mapList[i]["levelID"] * 0x64), 0x0);
+			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), 0x0);
 		end
 		
-		memory.write_u32_be(gGameState_MapStates + (mapList[i]["levelID"] * 0x64), currentStartPoint + 0x1);
+		memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), currentStartPoint + 0x1);
 	elseif currInput["Down"] and lastInput["Down"] ~= true then
 		if startPointInit == false then
-			memory.write_u32_be(gGameState_MapStates + (mapList[i]["levelID"] * 0x64), 0x0);
+			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), 0x0);
 		end
 		
 		if currentStartPoint > 0x0 then
-			memory.write_u32_be(gGameState_MapStates + (mapList[i]["levelID"] * 0x64), currentStartPoint - 0x1);
+			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), currentStartPoint - 0x1);
 		end
 	end
 end
@@ -433,9 +439,9 @@ end
 local function switchStartPointMode(i, currentStartPoint, startPointInit, isFairyStartPoint)
 	if (currInput["Left"] and lastInput["Left"] ~= true) or (currInput["Right"] and lastInput["Right"] ~= true) then
 		if isFairyStartPoint == true then
-			memory.write_u32_be(gGameState_MapStates + (mapList[i]["levelID"] * 0x64), 0x0);
+			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), 0x0);
 		else
-			memory.write_u32_be(gGameState_MapStates + (mapList[i]["levelID"] * 0x64), 0x4A000000);
+			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), 0x4A000000);
 		end
 	end
 end
@@ -443,7 +449,7 @@ end
 local function cycleStartPoints(i)
 	local startPointInit = true
 	local isFairyStartPoint = false
-	local currentStartPoint = mapStates[mapList[i]["levelID"]]["startpoint"];
+	local currentStartPoint = mapStates[mapList[i].levelID].startpoint;
 	if currentStartPoint == 0xFFFFFFFF then
 		startPointInit = false;
 	elseif bit.band(currentStartPoint, 0x4A000000) == 0x4A000000 then
@@ -518,16 +524,18 @@ while true do
 	end
 	
 	textOffset = textOffset + 40
-	gui.text( 0, textOffset, "Objectives Cleared: " .. tostring(objectivesCleared))
+	gui.text( 0, textOffset, "OBJECTIVES/TASKS:")
+	textOffset = textOffset + 20
+	gui.text( 0, textOffset, "  Objectives Cleared: " .. tostring(objectivesCleared))
 	textOffset = textOffset + 20
 	
-	gui.text( 0, textOffset, "Tasks Done: " .. tostring(tasksCleared) .. "/" .. tostring(tasksFound))
+	gui.text( 0, textOffset, "  Tasks Done: " .. tostring(tasksCleared) .. "/" .. tostring(tasksFound))
 	
-	if currInput["K"] and lastInput["K"] ~= true then
+	if currInput[KEY_PRINT_MAPS] and lastInput[KEY_PRINT_MAPS] ~= true then
 		printMapsToConsole();
-	elseif currInput["L"] and lastInput["L"] ~= true then
+	elseif currInput[KEY_PRINT_OBJECTIVES] and lastInput[KEY_PRINT_OBJECTIVES] ~= true then
 		printObjectivesToConsole();
-	elseif currInput["O"] and lastInput["O"] ~= true then
+	elseif currInput[KEY_PRINT_TASKS] and lastInput[KEY_PRINT_TASKS] ~= true then
 		printTasksToConsole();
 	end
 
