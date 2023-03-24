@@ -1,20 +1,25 @@
----Controls---
+-----------Controls------------
+---Edit these to your liking---
 KEY_PRINT_MAPS = "K"
 KEY_PRINT_OBJECTIVES = "L"
 KEY_PRINT_TASKS = "O"
---------------
+-------------------------------
 
 console.clear();
 memory.usememorydomain("RAM")
 
+--Table that holds save data
+local gGameState = 0x463b38
+local gGameState_Objectives	= gGameState + 0x2150
+local gGameState_Tasks		= gGameState + 0x2190
+local gGameState_BitHeap	= gGameState + 0x21AC
+local gGameState_MapStates	= gGameState + 0x6434
+
 local gpCurrentMap = 0x4CB60C
 local gNumMaps = 0x4cb608
 local gMapList = 0x46EE54
-local gGameState_Objectives = 0x465C88
-local gGameState_Tasks = 0x465cc8
-local gGameState_MapStates = 0x469F6C
-local currentMap = bit.band(memory.read_u32_be(gpCurrentMap), 0xFFFFFF);
-local numberOfMaps = memory.read_u32_be(gNumMaps)-1;
+local currentMap = bit.band(memory.read_u32_be(gpCurrentMap), 0xFFFFFF)
+local numberOfMaps = memory.read_u32_be(gNumMaps)-1
 
 local currInput = {}
 local lastInput = {}
@@ -31,10 +36,10 @@ local tasksFound = 0
 local tasksCleared = 0
 
 local taskStates = {
-	[0] = "Empty",
-	[1] = "Unchecked",
-	[2] = "Invisible",
-	[3] = "Checked"
+	[0] = "   ",
+	[1] = "[ ]",
+	[2] = "[?]",
+	[3] = "[X]"
 }
 
 local mapList = {}
@@ -50,29 +55,30 @@ local lastTaskHash = 0
 local currMapStateHash = {}
 local lastMapStateHash = {}
 
-local eggNames = {}
-eggNames[1] = "Concept Art"
-eggNames[2] = "Model Viewer"
-eggNames[3] = "Ember"
-eggNames[4] = "Flame"
-eggNames[5] = "Sgt. Byrd"
-eggNames[6] = "Spyro Turret"
-eggNames[7] = "Sparx"
-eggNames[8] = "Blink"
+local eggNames = {
+	[1] = "Concept Art",
+	[2] = "Model Viewer",
+	[3] = "Ember",
+	[4] = "Flame",
+	[5] = "Sgt. Byrd",
+	[6] = "Spyro Turret",
+	[7] = "Sparx",
+	[8] = "Blink"
+}
 
 --Table of .edb hashcodes
 local geoHashes = require("SpyroAHT_objlist_geoDef")
 local EXHashcodes = require("SpyroAHT_hashcodes")
 
 local textOffset = 0
-local textAreaWidth = 300
-client.setwindowsize(1);
+local textAreaWidth = 350
+client.setwindowsize(1)
 client.SetClientExtraPadding(textAreaWidth, 0, 0, 0)
 gui.use_surface("client")
 
 function setObjective(o)
 	local o_bit_index = bit.band(o, 0xFFFFFF)-1
-	if o_bit_index > 200 then return end
+	if o_bit_index > 0x200 then return end
 	local o_bit = bit.band(o_bit_index, 0x1f)
 	local o_index = bit.rshift(o_bit_index, 5)
 	
@@ -82,7 +88,7 @@ end
 
 function resetObjective(o)
 	local o_bit_index = bit.band(o, 0xFFFFFF)-1
-	if o_bit_index > 200 then return end
+	if o_bit_index > 0x200 then return end
 	local o_bit = bit.band(o_bit_index, 0x1f)
 	local o_index = bit.rshift(o_bit_index, 5)
 	
@@ -107,63 +113,62 @@ local function convertByteArrayToIntArray(inputArray, arraySize)
 	
 	for i = 0, intArraySize-1 do
 		local index = i*4
-		outputArray[i+1] = inputArray[index+1]*0x1000000 + inputArray[index+2]*0x10000 + inputArray[index+3]*0x100 + inputArray[index+4];
+		outputArray[i+1] = inputArray[index+1]*0x1000000 + inputArray[index+2]*0x10000 + inputArray[index+3]*0x100 + inputArray[index+4]
 	end
 	
-	return outputArray;
+	return outputArray
 end
 
 local function initMapGlobals()
-	
 	for i = 0, numberOfMaps do
 		local cur = bit.band(memory.read_u32_be(gMapList + (i * 0x4)), 0xFFFFFF)
 		mapList[i] = {}
 		
-		mapList[i].addr = cur;
-		mapList[i].realm_nr = memory.read_u32_be(cur + 0x8C);
-		mapList[i].level_nr = memory.read_u32_be(cur + 0x90);
-		mapList[i].geoHash = memory.read_u32_be(cur + 0xDC);
-		mapList[i].levelID = memory.read_u32_be(cur + 0xC8);
-		mapList[i].filename = geoHashes[mapList[i].geoHash];
+		mapList[i].addr = cur
+		mapList[i].realm_nr = memory.read_u32_be(cur + 0x8C)
+		mapList[i].level_nr = memory.read_u32_be(cur + 0x90)
+		mapList[i].geoHash = memory.read_u32_be(cur + 0xDC)
+		mapList[i].levelID = memory.read_u32_be(cur + 0xC8)
+		mapList[i].filename = geoHashes[mapList[i].geoHash]
 	end
 end
 
 local function initMapStates()
 	for i = 0, 200 do
-		local cur = gGameState_MapStates + (i * mapStatesBlockSize);
-		local block = convertByteArrayToIntArray(memory.read_bytes_as_array(cur, mapStatesBlockSize), mapStatesBlockSize);
+		local cur = gGameState_MapStates + (i * mapStatesBlockSize)
+		local block = convertByteArrayToIntArray(memory.read_bytes_as_array(cur, mapStatesBlockSize), mapStatesBlockSize)
 		
-		currMapStateHash[i] = memory.hash_region(cur, mapStatesBlockSize);
-		lastMapStateHash[i] = currMapStateHash[i];
+		currMapStateHash[i] = memory.hash_region(cur, mapStatesBlockSize)
+		lastMapStateHash[i] = currMapStateHash[i]
 		
 		mapStates[i] = {}
 		
-		mapStates[i].startpoint = block[1];
+		mapStates[i].startpoint = block[1]
 		
 		if block[3] ~= 0xFFFFFFFF and block[4] ~= 0xFFFFFFFF and block[5] ~= 0xFFFFFFFF then
-			mapStates[i].totalDG = block[3];
-			mapStates[i].totalDE = block[4];
-			mapStates[i].totalLG = block[5];
+			mapStates[i].totalDG = block[3]
+			mapStates[i].totalDE = block[4]
+			mapStates[i].totalLG = block[5]
 		else
-			mapStates[i].totalDG = 0;
-			mapStates[i].totalDE = 0;
-			mapStates[i].totalLG = 0;
+			mapStates[i].totalDG = 0
+			mapStates[i].totalDE = 0
+			mapStates[i].totalLG = 0
 		end
 		
-		mapStates[i].tallyDG = block[13];
-		mapStates[i].tallyLG = block[14];
+		mapStates[i].tallyDG = block[13]
+		mapStates[i].tallyLG = block[14]
 		
 		mapStates[i].tallyDE = {}
-		mapStates[i].tallyDE[1] = block[15];
-		mapStates[i].tallyDE[2] = block[16];
-		mapStates[i].tallyDE[3] = block[17];
-		mapStates[i].tallyDE[4] = block[18];
-		mapStates[i].tallyDE[5] = block[19];
-		mapStates[i].tallyDE[6] = block[20];
-		mapStates[i].tallyDE[7] = block[21];
-		mapStates[i].tallyDE[8] = block[22];
+		mapStates[i].tallyDE[1] = block[15]
+		mapStates[i].tallyDE[2] = block[16]
+		mapStates[i].tallyDE[3] = block[17]
+		mapStates[i].tallyDE[4] = block[18]
+		mapStates[i].tallyDE[5] = block[19]
+		mapStates[i].tallyDE[6] = block[20]
+		mapStates[i].tallyDE[7] = block[21]
+		mapStates[i].tallyDE[8] = block[22]
 		
-		mapStates[i].tallyDE.all = 0;
+		mapStates[i].tallyDE.all = 0
 		for j = 1, 8 do
 			mapStates[i].tallyDE.all = mapStates[i].tallyDE.all + mapStates[i].tallyDE[j]
 		end
@@ -193,24 +198,25 @@ end
 local function printMapsToConsole()
 	local str = ""
 	
-	str = str .. string.format("Number of Maps: %d\n\n", numberOfMaps);
+	str = str .. string.format("Number of Maps: %d\n\n", numberOfMaps)
 	for i = 0, numberOfMaps do
-		str = str .. string.format("Map ID %d:\n", mapList[i].levelID);
-		str = str .. string.format("  Hash %x (%s)\n", mapList[i].geoHash, mapList[i].filename);
-		str = str .. string.format("  Base Address: 0x%x\n", mapList[i].addr);
-		str = str .. string.format("  Realm: %d\n", mapList[i].realm_nr);
-		str = str .. string.format("  Level: %d\n", mapList[i].level_nr);
+		str = str..string.format("Map ID %d:\n", mapList[i].levelID)
+		str = str..string.format("  Hash: 0x0%x (%s)\n", mapList[i].geoHash, mapList[i].filename)
+		str = str..string.format("  Base Address: 0x%x\n", mapList[i].addr)
+		str = str..string.format("  Realm: %d\n", mapList[i].realm_nr)
+		str = str..string.format("  Level: %d\n", mapList[i].level_nr)
 		
 		if mapStates[i].startpoint ~= 0xFFFFFFFF then
-			str = str .. string.format("  Startpoint Hash: %x\n", mapStates[mapList[i].levelID].startpoint);
+			str = str..string.format("  Startpoint Hash: %x\n", mapStates[mapList[i].levelID].startpoint)
 		end
 		
-		str = str .. string.format("  Dark Gems  :  %d/%d\n", mapStates[mapList[i].levelID].tallyDG,mapStates[mapList[i].levelID].totalDG);
-		str = str .. string.format("  Dragon Eggs:  %d/%d\n", mapStates[mapList[i].levelID].tallyDE.all,mapStates[mapList[i].levelID].totalDE);
-		str = str .. string.format("  Light Gems :  %d/%d\n", mapStates[mapList[i].levelID].tallyLG,mapStates[mapList[i].levelID].totalLG);
+		str = str..string.format("  Dark Gems  :  %d/%d\n", mapStates[mapList[i].levelID].tallyDG,mapStates[mapList[i].levelID].totalDG)
+		str = str..string.format("  Dragon Eggs:  %d/%d\n", mapStates[mapList[i].levelID].tallyDE.all,mapStates[mapList[i].levelID].totalDE)
+		str = str..string.format("  Light Gems :  %d/%d\n", mapStates[mapList[i].levelID].tallyLG,mapStates[mapList[i].levelID].totalLG)
 	end
 	
-	console.log(str);
+	console.clear()
+	console.log(str)
 end
 
 local function printObjectivesToConsole()
@@ -220,12 +226,15 @@ local function printObjectivesToConsole()
 	local amount = 0
 	
 	for h, o in ipairs(objectives) do
+		local sta = ""
+		if o.State then sta=sta.."  X  " else sta=sta.."     " end
+		
 		str = str ..
-		string.format("0x%x", bit.bor(h, 0x44000000)) ..
+		"0x"..bizstring.hex(bit.bor(h, 0x44000000)) ..
 		" | " ..
 		stringPad(string.format("i: 0x%x / b: %d", o.Index, o.Bit), 14) ..
 		" | " ..
-		stringPad(tostring(o.State), 5) ..
+		sta ..
 		" | " ..
 		o.Name ..
 		"\n"
@@ -233,7 +242,7 @@ local function printObjectivesToConsole()
 		if o.State then amount = amount + 1 end
 	end
 	
-	str = str .. divider .. "\nObjectives Cleared: " .. tostring(amount)
+	str = str..divider.."\nObjectives Cleared: "..tostring(amount)
 	
 	console.clear()
 	console.log(str)
@@ -241,7 +250,10 @@ end
 
 local function printTasksToConsole()
 	local divider = "----------------------------------------------"
-	local str = "Hash       | Index  / Bit   | State     | Name\n" .. divider .. "\n"
+	local str = "Hash       | Index  / Bit   | State | Name\n" .. divider .. "\n"
+	
+	local found = 0
+	local cleared = 0
 	
 	for h, t in ipairs(tasks) do
 		str = str ..
@@ -249,11 +261,16 @@ local function printTasksToConsole()
 		" | " ..
 		stringPad(string.format("i: 0x%x / b: %d", t.Index, t.Bit), 14) ..
 		" | " ..
-		stringPad(taskStates[t.State], 9) ..
+		" "..taskStates[t.State].." " ..
 		" | " ..
 		t.Name ..
 		"\n"
+		
+		if t.State == 1 or t.State == 3 then found=found+1 end
+		if t.State == 3 then cleared=cleared+1 end
 	end
+	
+	str = str..divider.."\nTasks Cleared/Found: "..tostring(cleared).."/"..tostring(found)
 	
 	console.clear()
 	console.log(str)
@@ -347,6 +364,12 @@ local function updateTasks()
 				console.log(msg)
 				
 				msgSent = msgSent + 1
+			elseif (tasks[i].State == 0) and taskState == 3 then
+				local msg = string.format("Task found+completed: %s (0x%x)", hashStr, hash)
+				gui.addmessage(msg)
+				console.log(msg)
+				
+				msgSent = msgSent + 1
 			end
 			
 			if msgSent == maxMsg then
@@ -368,52 +391,52 @@ end
 
 local function updateMapStates()
 	for i = 0, 200 do
-		local cur = gGameState_MapStates + (i * mapStatesBlockSize);
+		local cur = gGameState_MapStates + (i * mapStatesBlockSize)
 		
-		currMapStateHash[i] = memory.hash_region(cur, mapStatesBlockSize);
+		currMapStateHash[i] = memory.hash_region(cur, mapStatesBlockSize)
 		
 		--Only update the table when it changes
 		if currMapStateHash[i] ~= lastMapStateHash[i] then
-			local block = convertByteArrayToIntArray(memory.read_bytes_as_array(cur, mapStatesBlockSize), mapStatesBlockSize);
+			local block = convertByteArrayToIntArray(memory.read_bytes_as_array(cur, mapStatesBlockSize), mapStatesBlockSize)
 
-			mapStates[i].startpoint = block[1];
+			mapStates[i].startpoint = block[1]
 			
-			mapStates[i].tallyDG = block[13];
-			mapStates[i].tallyLG = block[14];
+			mapStates[i].tallyDG = block[13]
+			mapStates[i].tallyLG = block[14]
 			
-			mapStates[i].tallyDE[1] = block[15];
-			mapStates[i].tallyDE[2] = block[16];
-			mapStates[i].tallyDE[3] = block[17];
-			mapStates[i].tallyDE[4] = block[18];
-			mapStates[i].tallyDE[5] = block[19];
-			mapStates[i].tallyDE[6] = block[20];
-			mapStates[i].tallyDE[7] = block[21];
-			mapStates[i].tallyDE[8] = block[22];
+			mapStates[i].tallyDE[1] = block[15]
+			mapStates[i].tallyDE[2] = block[16]
+			mapStates[i].tallyDE[3] = block[17]
+			mapStates[i].tallyDE[4] = block[18]
+			mapStates[i].tallyDE[5] = block[19]
+			mapStates[i].tallyDE[6] = block[20]
+			mapStates[i].tallyDE[7] = block[21]
+			mapStates[i].tallyDE[8] = block[22]
 			
-			mapStates[i].tallyDE.all = 0;
+			mapStates[i].tallyDE.all = 0
 			for j = 1, 8 do
 				mapStates[i].tallyDE.all = mapStates[i].tallyDE.all + mapStates[i].tallyDE[j]
 			end
 		end
 		
-		lastMapStateHash[i] = memory.hash_region(cur, 0x64);
+		lastMapStateHash[i] = memory.hash_region(cur, 0x64)
 	end
 end
 
 local function cycleFairyStartPoints(i, currentStartPoint, startPointInit)
 	if currInput["Up"] and lastInput["Up"] ~= true then
 		if startPointInit == false then
-			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), 0x4A000000);
+			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), 0x4A000000)
 		end
 		
-		memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), currentStartPoint + 0x1);
+		memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), currentStartPoint + 0x1)
 	elseif currInput["Down"] and lastInput["Down"] ~= true then
 		if startPointInit == false then
-			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), 0x4A000000);
+			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), 0x4A000000)
 		end
 		
 		if currentStartPoint > 0x4A000000 then
-			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), currentStartPoint - 0x1);
+			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), currentStartPoint - 0x1)
 		end
 	end
 end
@@ -421,17 +444,17 @@ end
 local function cycleShopStartPoints(i, currentStartPoint, startPointInit)
 	if currInput["Up"] and lastInput["Up"] ~= true then
 		if startPointInit == false then
-			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), 0x0);
+			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), 0x0)
 		end
 		
-		memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), currentStartPoint + 0x1);
+		memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), currentStartPoint + 0x1)
 	elseif currInput["Down"] and lastInput["Down"] ~= true then
 		if startPointInit == false then
-			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), 0x0);
+			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), 0x0)
 		end
 		
 		if currentStartPoint > 0x0 then
-			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), currentStartPoint - 0x1);
+			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), currentStartPoint - 0x1)
 		end
 	end
 end
@@ -439,9 +462,9 @@ end
 local function switchStartPointMode(i, currentStartPoint, startPointInit, isFairyStartPoint)
 	if (currInput["Left"] and lastInput["Left"] ~= true) or (currInput["Right"] and lastInput["Right"] ~= true) then
 		if isFairyStartPoint == true then
-			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), 0x0);
+			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), 0x0)
 		else
-			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), 0x4A000000);
+			memory.write_u32_be(gGameState_MapStates + (mapList[i].levelID * 0x64), 0x4A000000)
 		end
 	end
 end
@@ -449,97 +472,90 @@ end
 local function cycleStartPoints(i)
 	local startPointInit = true
 	local isFairyStartPoint = false
-	local currentStartPoint = mapStates[mapList[i].levelID].startpoint;
+	local currentStartPoint = mapStates[mapList[i].levelID].startpoint
 	if currentStartPoint == 0xFFFFFFFF then
-		startPointInit = false;
+		startPointInit = false
 	elseif bit.band(currentStartPoint, 0x4A000000) == 0x4A000000 then
-		isFairyStartPoint = true;
+		isFairyStartPoint = true
 	end
 	
 	if isFairyStartPoint then
-		cycleFairyStartPoints(i, currentStartPoint, startPointInit);
+		cycleFairyStartPoints(i, currentStartPoint, startPointInit)
 	else
-		cycleShopStartPoints(i, currentStartPoint, startPointInit);
+		cycleShopStartPoints(i, currentStartPoint, startPointInit)
 	end
-	switchStartPointMode(i, currentStartPoint, startPointInit, isFairyStartPoint);
+	switchStartPointMode(i, currentStartPoint, startPointInit, isFairyStartPoint)
 end
 
-initObjectives();
-initTasks();
-initMapGlobals();
-initMapStates();
+initObjectives()
+initTasks()
+initMapGlobals()
+initMapStates()
 
 while true do
-	currInput = input.get();
+	currInput = input.get()
 	
-	local lagFrame = memory.read_u32_be(0x22f9a8) ~= 0x9421FFE0
-	if lagFrame then gui.addmessage("LAGFRAME!") end
+	currObjectiveHash = memory.hash_region(gGameState_Objectives, objectiveTableSize * 4)
+	if currObjectiveHash ~= lastObjectiveHash then updateObjectives() end
+	lastObjectiveHash = currObjectiveHash
 	
-	if not lagFrame then 
-		currObjectiveHash = memory.hash_region(gGameState_Objectives, objectiveTableSize * 4)
-		if currObjectiveHash ~= lastObjectiveHash then updateObjectives() end
-		lastObjectiveHash = currObjectiveHash
-		
-		currTaskHash = memory.hash_region(gGameState_Tasks, taskTableSize * 4)
-		if currTaskHash ~= lastTaskHash then updateTasks() end
-		lastTaskHash = currTaskHash
-		
-		currentMap = bit.band(memory.read_u32_be(gpCurrentMap), 0xFFFFFF);
-		if currentMap ~= 0 then
-			updateMapStates();
-		end
-	end
+	currTaskHash = memory.hash_region(gGameState_Tasks, taskTableSize * 4)
+	if currTaskHash ~= lastTaskHash then updateTasks() end
+	lastTaskHash = currTaskHash
 	
-	textOffset = 20;
+	currentMap = bit.band(memory.read_u32_be(gpCurrentMap), 0xFFFFFF)
+	if currentMap ~= 0 then updateMapStates() end
+	
+	textOffset = 20
 	
 	for i = 0, numberOfMaps do
-		if currentMap == mapList[i]["addr"] then
-			gui.text( 0, textOffset, "CURRENT MAP:", nil);
+		if currentMap == mapList[i].addr then
+			gui.text( 0, textOffset, "CURRENT MAP:", nil)
 			textOffset = textOffset + 20
-			gui.text( 0, textOffset, "  Map ID: " .. mapList[i]["levelID"]);
+			gui.text( 0, textOffset, "  Map ID: "..mapList[i].levelID)
 			textOffset = textOffset + 20
-			gui.text( 0, textOffset, string.format("  Hash %x (%s)", mapList[i]["geoHash"], mapList[i]["filename"]), nil);
+			gui.text( 0, textOffset, "  Hash: 0x0"..bizstring.hex(mapList[i].geoHash).." ("..mapList[i].filename..")", nil)
 			textOffset = textOffset + 20
-			gui.text( 0, textOffset, string.format("  Base Address: 0x%x", mapList[i]["addr"]), nil);
+			gui.text( 0, textOffset, "  Base Address: 0x"..bizstring.hex(mapList[i].addr), nil)
 			textOffset = textOffset + 20
-			gui.text( 0, textOffset, "  Realm: " .. tostring(mapList[i]["realm_nr"]));
+			gui.text( 0, textOffset, "  Realm: "..tostring(mapList[i].realm_nr))
 			textOffset = textOffset + 20
-			gui.text( 0, textOffset, "  Level: " .. tostring(mapList[i]["level_nr"]));
+			gui.text( 0, textOffset, "  Level: "..tostring(mapList[i].level_nr))
 			textOffset = textOffset + 40
 			
-			gui.text( 0, textOffset, string.format("  Startpoint: %x", mapStates[mapList[i]["levelID"]]["startpoint"]), nil);
+			gui.text( 0, textOffset, "  Startpoint: "..bizstring.hex(mapStates[mapList[i].levelID].startpoint), nil)
 			textOffset = textOffset + 20
-			gui.text( 0, textOffset, "  Dark Gems:   " .. tostring(mapStates[mapList[i]["levelID"]]["tallyDG"]) .. "/" .. tostring(mapStates[mapList[i]["levelID"]]["totalDG"]));
+			gui.text( 0, textOffset, "  Dark Gems:   "..tostring(mapStates[mapList[i].levelID].tallyDG).."/"..tostring(mapStates[mapList[i].levelID].totalDG))
 			textOffset = textOffset + 20
-			gui.text( 0, textOffset, "  Dragon Eggs: " .. tostring(mapStates[mapList[i]["levelID"]]["tallyDE"]["all"]) .. "/" .. tostring(mapStates[mapList[i]["levelID"]]["totalDE"]));
+			gui.text( 0, textOffset, "  Dragon Eggs: "..tostring(mapStates[mapList[i].levelID].tallyDE.all).."/"..tostring(mapStates[mapList[i].levelID].totalDE))
 			textOffset = textOffset + 20
-			gui.text( 0, textOffset, "  Light Gems:  " .. tostring(mapStates[mapList[i]["levelID"]]["tallyLG"]) .. "/" .. tostring(mapStates[mapList[i]["levelID"]]["totalLG"]));
+			gui.text( 0, textOffset, "  Light Gems:  "..tostring(mapStates[mapList[i].levelID].tallyLG).."/"..tostring(mapStates[mapList[i].levelID].totalLG))
 			textOffset = textOffset + 20
 			
-			cycleStartPoints(i);
+			cycleStartPoints(i)
 		end
 	end
 	if currentMap == 0x0 then
-		gui.text( 0, textOffset, "No map", "Red");
+		gui.text( 0, textOffset, "No map", "Red")
 	end
 	
 	textOffset = textOffset + 40
 	gui.text( 0, textOffset, "OBJECTIVES/TASKS:")
 	textOffset = textOffset + 20
-	gui.text( 0, textOffset, "  Objectives Cleared: " .. tostring(objectivesCleared))
+	gui.text( 0, textOffset, "  Objectives Cleared: "..tostring(objectivesCleared))
 	textOffset = textOffset + 20
 	
-	gui.text( 0, textOffset, "  Tasks Done: " .. tostring(tasksCleared) .. "/" .. tostring(tasksFound))
+	gui.text( 0, textOffset, "  Tasks Done: "..tostring(tasksCleared).."/"..tostring(tasksFound))
 	
-	if currInput[KEY_PRINT_MAPS] and lastInput[KEY_PRINT_MAPS] ~= true then
-		printMapsToConsole();
-	elseif currInput[KEY_PRINT_OBJECTIVES] and lastInput[KEY_PRINT_OBJECTIVES] ~= true then
-		printObjectivesToConsole();
-	elseif currInput[KEY_PRINT_TASKS] and lastInput[KEY_PRINT_TASKS] ~= true then
-		printTasksToConsole();
-	end
+	--if currInput[KEY_PRINT_MAPS] and lastInput[KEY_PRINT_MAPS] ~= true then
+	--	printMapsToConsole()
+	--elseif currInput[KEY_PRINT_OBJECTIVES] and lastInput[KEY_PRINT_OBJECTIVES] ~= true then
+	--	printObjectivesToConsole()
+	--elseif currInput[KEY_PRINT_TASKS] and lastInput[KEY_PRINT_TASKS] ~= true then
+	--	printTasksToConsole()
+	--end
 
-	lastInput = input.get();
+	lastInput = input.get()
 
-	emu.frameadvance();
+	emu.frameadvance()
 end
