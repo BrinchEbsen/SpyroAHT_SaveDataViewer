@@ -101,7 +101,6 @@ local checkTasks = forms.checkbox(settingsWindow, "Tasks", 2, 50)
 forms.setproperty(checkTasks, "Checked", true)
 
 local checkBitHeap = forms.checkbox(settingsWindow, "BitHeap", 2, 70)
-forms.setproperty(checkBitHeap, "Checked", true)
 
 function table.shallow_copy(t)
   local t2 = {}
