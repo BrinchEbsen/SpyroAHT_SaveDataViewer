@@ -8,12 +8,24 @@ KEY_PRINT_TASKS = "O"
 console.clear();
 memory.usememorydomain("RAM")
 
+local doObjectives = true
+local doTasks = true
+local doBitHeap = true
+
 --Table that holds save data
-local gGameState = 0x463b38
-local gGameState_Objectives	= gGameState + 0x2150
-local gGameState_Tasks		= gGameState + 0x2190
-local gGameState_BitHeap	= gGameState + 0x21AC
-local gGameState_MapStates	= gGameState + 0x6434
+local gGameState			= 0x463b38
+local gGameState_Objectives	= gGameState + 0x2150 -- = 0x465C88
+local gGameState_Tasks		= gGameState + 0x2190 -- = 0x465CC8
+local gGameState_BitHeap	= gGameState + 0x21AC -- = 0x465CE4
+local gGameState_MapStates	= gGameState + 0x6434 -- = 0x469F6C
+
+local bitHeapSize = 0x4000     -- 0x465CE4 to 0x469F76
+local bitHeapSizeUsed = 0x10CC -- 0x465CE4 to 0x466DB0
+local currBitHeapBlock = memory.read_bytes_as_array(gGameState_BitHeap, bitHeapSize)
+local lastBitHeapBlock = memory.read_bytes_as_array(gGameState_BitHeap, bitHeapSize)
+
+local currBitHeapHash = memory.hash_region(gGameState_BitHeap, bitHeapSize)
+local lastBitHeapHash = currBitHeapHash
 
 local gpCurrentMap = 0x4CB60C
 local gNumMaps = 0x4cb608
@@ -76,25 +88,66 @@ client.setwindowsize(1)
 client.SetClientExtraPadding(textAreaWidth, 0, 0, 0)
 gui.use_surface("client")
 
+forms.destroyall()
+local settingsWindow = forms.newform(100, 100, "Toggles")
+forms.setlocation(settingsWindow, client.xpos()+client.screenwidth(), client.ypos()+20)
+
+local labelUpdate = forms.label(settingsWindow, "Update:", 2, 10, 150, 14)
+
+local checkObjectives = forms.checkbox(settingsWindow, "Objectives", 2, 30)
+forms.setproperty(checkObjectives, "Checked", true)
+
+local checkTasks = forms.checkbox(settingsWindow, "Tasks", 2, 50)
+forms.setproperty(checkTasks, "Checked", true)
+
+local checkBitHeap = forms.checkbox(settingsWindow, "BitHeap", 2, 70)
+forms.setproperty(checkBitHeap, "Checked", true)
+
+function table.shallow_copy(t)
+  local t2 = {}
+  for k,v in pairs(t) do
+    t2[k] = v
+  end
+  return t2
+end
+
 function setObjective(o)
 	local o_bit_index = bit.band(o, 0xFFFFFF)-1
-	if o_bit_index > 0x200 then return end
+	if o_bit_index > 0x200 then
+		console.clear()
+		console.log("Invalid objective hash!")
+		return
+	end
 	local o_bit = bit.band(o_bit_index, 0x1f)
 	local o_index = bit.rshift(o_bit_index, 5)
 	
 	local c = memory.read_u32_be(gGameState_Objectives + (o_index * 4))
 	memory.write_u32_be(gGameState_Objectives + (o_index * 4), bit.bor(c, bit.lshift(1, o_bit)))
+	
+	console.clear()
+	console.log("Set objective 0x" .. bizstring.hex(o))
 end
 
 function resetObjective(o)
 	local o_bit_index = bit.band(o, 0xFFFFFF)-1
-	if o_bit_index > 0x200 then return end
+	if o_bit_index > 0x200 then
+		console.clear()
+		console.log("Invalid objective hash!")
+		return
+	end
 	local o_bit = bit.band(o_bit_index, 0x1f)
 	local o_index = bit.rshift(o_bit_index, 5)
 	
 	local c = memory.read_u32_be(gGameState_Objectives + (o_index * 4))
-	if not bit.check(c, o_bit) then return end
+	if not bit.check(c, o_bit) then
+		console.clear()
+		console.log("Objective already not set.")
+		return
+	end
 	memory.write_u32_be(gGameState_Objectives + (o_index * 4), bit.bxor(c, bit.lshift(1, o_bit)))
+	
+	console.clear()
+	console.log("Reset objective 0x" .. bizstring.hex(o))
 end
 
 local function stringPad(s, targetLen)
@@ -129,7 +182,9 @@ local function initMapGlobals()
 		mapList[i].level_nr = memory.read_u32_be(cur + 0x90)
 		mapList[i].geoHash = memory.read_u32_be(cur + 0xDC)
 		mapList[i].levelID = memory.read_u32_be(cur + 0xC8)
+		mapList[i].thing = memory.read_u32_be(cur + 0xf0)
 		mapList[i].filename = geoHashes[mapList[i].geoHash]
+		mapList[i].filehash = EXHashcodes[mapList[i].geoHash]
 	end
 end
 
@@ -303,14 +358,14 @@ local function updateObjectives()
 		
 		if msgSent < maxMsg then
 			if (objectives[i].State == false) and objectiveState then
-				local msg = string.format("Objective cleared: %s (0x%x)", hashStr, hash)
+				local msg = string.format("OB| Objective cleared: %s (0x%x)", hashStr, hash)
 				gui.addmessage(msg)
 				console.log(msg)
 				
 				msgSent = msgSent + 1
 			end
 			if msgSent == maxMsg then
-				msg = "Message cap reached!"
+				msg = "OB| Message cap reached!"
 				gui.addmessage(msg)
 				console.log(msg)
 			end
@@ -353,19 +408,19 @@ local function updateTasks()
 		
 		if msgSent < maxMsg then
 			if (tasks[i].State == 0) and taskState == 1 then
-				local msg = string.format("New task: %s (0x%x)", hashStr, hash)
+				local msg = string.format("TA| New task: %s (0x%x)", hashStr, hash)
 				gui.addmessage(msg)
 				console.log(msg)
 				
 				msgSent = msgSent + 1
 			elseif (tasks[i].State == 1) and taskState == 3 then
-				local msg = string.format("Task completed: %s (0x%x)", hashStr, hash)
+				local msg = string.format("TA| Task completed: %s (0x%x)", hashStr, hash)
 				gui.addmessage(msg)
 				console.log(msg)
 				
 				msgSent = msgSent + 1
 			elseif (tasks[i].State == 0) and taskState == 3 then
-				local msg = string.format("Task found+completed: %s (0x%x)", hashStr, hash)
+				local msg = string.format("TA| Task found+completed: %s (0x%x)", hashStr, hash)
 				gui.addmessage(msg)
 				console.log(msg)
 				
@@ -373,7 +428,7 @@ local function updateTasks()
 			end
 			
 			if msgSent == maxMsg then
-				msg = "Message cap reached!"
+				local msg = "TA| Message cap reached!"
 				gui.addmessage(msg)
 				console.log(msg)
 			end
@@ -421,6 +476,40 @@ local function updateMapStates()
 		
 		lastMapStateHash[i] = memory.hash_region(cur, 0x64)
 	end
+end
+
+local function updateBitHeap()
+	currBitHeapBlock = memory.read_bytes_as_array(gGameState_BitHeap, bitHeapSizeUsed)
+	local changes = 0
+	
+	for i = 1, bitHeapSizeUsed do
+		local currByte = currBitHeapBlock[i]
+		local lastByte = lastBitHeapBlock[i]
+		
+		for b = 0, 7 do
+			local set   = bit.check(currByte, b) and (bit.check(lastByte, b) == false)
+			local reset = bit.check(lastByte, b) and (bit.check(currByte, b) == false)
+			
+			if set or reset then
+				changes = changes + 1
+				
+				local msg = ""
+				if set then msg=msg.."BH| Bit set - "
+				else        msg=msg.."BH| Bit reset - " end
+				
+				msg=msg.."byte: 0x"..bizstring.hex(gGameState_BitHeap+(i-1))..stringPad(" (0x"..bizstring.hex(i-1)..")", 9).." | bit: "..tostring(b).." (index "..tostring((i-1)*8+b-1)..")"
+				
+				console.log(msg)
+			end
+		end
+		
+		if changes > 10 then
+			console.log("BH| Message cap reached!")
+			break
+		end
+	end
+	
+	lastBitHeapBlock = memory.read_bytes_as_array(gGameState_BitHeap, bitHeapSizeUsed)
 end
 
 local function cycleFairyStartPoints(i, currentStartPoint, startPointInit)
@@ -495,16 +584,34 @@ initMapStates()
 while true do
 	currInput = input.get()
 	
-	currObjectiveHash = memory.hash_region(gGameState_Objectives, objectiveTableSize * 4)
-	if currObjectiveHash ~= lastObjectiveHash then updateObjectives() end
-	lastObjectiveHash = currObjectiveHash
+	if forms.ischecked(checkObjectives) then doObjectives=true else doObjectives=false end
+	if forms.ischecked(checkTasks)      then doTasks     =true else doTasks     =false end
+	if forms.ischecked(checkBitHeap)    then doBitHeap   =true else doBitHeap   =false end
 	
-	currTaskHash = memory.hash_region(gGameState_Tasks, taskTableSize * 4)
-	if currTaskHash ~= lastTaskHash then updateTasks() end
-	lastTaskHash = currTaskHash
+	--OBJECTIVES
+	if doObjectives then
+		currObjectiveHash = memory.hash_region(gGameState_Objectives, objectiveTableSize * 4)
+		if currObjectiveHash ~= lastObjectiveHash then updateObjectives() end
+		lastObjectiveHash = currObjectiveHash
+	end
 	
+	--TASKS
+	if doTasks then
+		currTaskHash = memory.hash_region(gGameState_Tasks, taskTableSize * 4)
+		if currTaskHash ~= lastTaskHash then updateTasks() end
+		lastTaskHash = currTaskHash
+	end
+	
+	--MAP STATES
 	currentMap = bit.band(memory.read_u32_be(gpCurrentMap), 0xFFFFFF)
 	if currentMap ~= 0 then updateMapStates() end
+	
+	--BITHEAP
+	if doBitHeap then
+		currBitHeapHash = memory.hash_region(gGameState_BitHeap, bitHeapSize)
+		if currBitHeapHash ~= lastBitHeapHash then updateBitHeap() end
+		lastBitHeapHash = currBitHeapHash
+	end
 	
 	textOffset = 20
 	
@@ -547,13 +654,13 @@ while true do
 	
 	gui.text( 0, textOffset, "  Tasks Done: "..tostring(tasksCleared).."/"..tostring(tasksFound))
 	
-	--if currInput[KEY_PRINT_MAPS] and lastInput[KEY_PRINT_MAPS] ~= true then
-	--	printMapsToConsole()
-	--elseif currInput[KEY_PRINT_OBJECTIVES] and lastInput[KEY_PRINT_OBJECTIVES] ~= true then
-	--	printObjectivesToConsole()
-	--elseif currInput[KEY_PRINT_TASKS] and lastInput[KEY_PRINT_TASKS] ~= true then
-	--	printTasksToConsole()
-	--end
+	if currInput[KEY_PRINT_MAPS] and lastInput[KEY_PRINT_MAPS] ~= true then
+		printMapsToConsole()
+	elseif currInput[KEY_PRINT_OBJECTIVES] and lastInput[KEY_PRINT_OBJECTIVES] ~= true then
+		printObjectivesToConsole()
+	elseif currInput[KEY_PRINT_TASKS] and lastInput[KEY_PRINT_TASKS] ~= true then
+		printTasksToConsole()
+	end
 
 	lastInput = input.get()
 
