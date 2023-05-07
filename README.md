@@ -1,5 +1,5 @@
 # Spyro: A Hero's Tail - Save Data Veiwer Lua Script for BizHawk
-This is a Lua script for CasualPokePlayer's Dolphin branch of BizHawk, you can get it here: https://tasvideos.org/Forum/Topics/23347.
+This is a Lua script for CasualPokePlayer's Dolphin branch of BizHawk, you can get it here: https://github.com/CasualPokePlayer/BizHawk/releases.
 <br>This was made for the GameCube NTSC version of Spyro: A Hero's Tail.
 
 ### Setup
