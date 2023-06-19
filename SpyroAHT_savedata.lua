@@ -275,12 +275,9 @@ function setStartPoint(hash)
 		end
 	end
 	if success then
-		console.clear()
-		console.log("----------------\n\n"
-		.."Set startpoint to 0x"..bizstring.hex(hash)
-		.."\n\n----------------")
+		return "Set startpoint to 0x"..bizstring.hex(hash)
 	else
-		console.log("Could not set start point!")
+		return "Could not set start point!"
 	end
 end
 
