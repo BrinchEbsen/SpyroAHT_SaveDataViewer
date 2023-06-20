@@ -32,8 +32,8 @@ You can cycle through level startpoints using the arrow keys. Up will increase t
 
 ### Public Functions
 These are functions you can type into the Lua console to test things in real-time.
-<br><br>setObjective(hash): Sets the objective with the given hashcode (for example setObjective(0x44000032)).
-<br><br>resetObjective(hash): Resets the objective with the given hashcode (for example setObjective(0x44000032)).
+<br><br>setObjective(hash): Sets the objective with the given hashcode (for example "setObjective(0x44000032)").
+<br><br>resetObjective(hash): Resets the objective with the given hashcode (for example "resetObjective(0x44000032)").
 <br><br>getBitHeapBit(index): Returns the value of the bit at the given BitHeap index (either 0 or 1).
 <br><br>setBitHeapBit(index, value): Sets the bit at the given BitHeap index to the given value (either 0 or 1).
 <br><br>setStartPoint(hash): Sets the current map's startpoint to the given startpoint hashcode.
